@@ -134,7 +134,10 @@ class ErrorResponse(BaseModel):
 # ====================================================================
 
 class RunRequest(BaseModel):
-    """Request para endpoint /api/v2/run (remote browser con storageState)."""
+    """Request para endpoint /api/v2/run (remote browser con storageState).
+    
+    NOTA: El login es MANUAL - el usuario ingresa credenciales en el viewer.
+    """
     
     client_id: str = Field(..., description="ID del cliente que solicita el proceso")
     year: int = Field(..., ge=2020, le=2030, description="Año del período a procesar")
@@ -143,8 +146,6 @@ class RunRequest(BaseModel):
         None,
         description="RUT y nombre del prestador (opcional, si es None procesa todos)"
     )
-    username: str = Field(..., description="RUT del usuario para login")
-    password: str = Field(..., description="Contraseña del usuario")
     
     class Config:
         json_schema_extra = {

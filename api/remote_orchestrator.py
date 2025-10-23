@@ -33,19 +33,16 @@ class RemoteOrchestrator:
         
     async def start_remote_session(
         self,
-        session_id: str,
-        username: str,
-        password: str
+        session_id: str
     ) -> Dict:
         """
         Inicia una sesión de navegador remoto en el viewer container.
         
         Fase 3: Conecta al display del viewer y lanza Chromium visible via noVNC.
+        El usuario hace login manualmente en el navegador remoto.
         
         Args:
             session_id: ID único de la sesión
-            username: RUT para login (no usado aún, para futuro auto-fill)
-            password: Contraseña para login (no usado aún, para futuro auto-fill)
             
         Returns:
             Dict con metadata de la sesión
@@ -80,15 +77,13 @@ class RemoteOrchestrator:
             
             page = await context.new_page()
             
-            # Navegar a Cruz Blanca login (redirige automáticamente al login si no estás autenticado)
-            logger.info(f"🌐 Navegando a Cruz Blanca...")
-            await page.goto("https://www.cruzblanca.cl/wps/portal/Private/Privado/Home", timeout=30000)
+            # Navegar a Cruz Blanca Extranet (página de login)
+            logger.info(f"🌐 Navegando a Cruz Blanca Extranet login...")
+            await page.goto("https://extranet.cruzblanca.cl/login.aspx", timeout=30000)
             
             # Guardar sesión activa
             session_data = {
                 'session_id': session_id,
-                'username': username,
-                'password': password,
                 'created_at': datetime.now(),
                 'login_completed': False,
                 'storage_state': None,
@@ -132,9 +127,9 @@ class RemoteOrchestrator:
         logger.info(f"⏳ Esperando login manual para sesión {session_id} (timeout: {timeout_seconds}s)")
         
         try:
-            # Esperar a que la URL contenga "Privado" (indica login exitoso)
+            # Esperar a que llegue al dashboard (Extranet.aspx = login exitoso)
             await page.wait_for_url(
-                "**/Privado/*.aspx",
+                "**/Extranet.aspx*",
                 timeout=timeout_seconds * 1000
             )
             

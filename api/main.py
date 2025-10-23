@@ -306,9 +306,7 @@ async def run_remote_browser(
     try:
         # Iniciar sesión remota (navegador en viewer)
         await remote_orchestrator.start_remote_session(
-            session_id=session_id,
-            username=request.username,
-            password=request.password
+            session_id=session_id
         )
         
         # URL del viewer noVNC
