@@ -89,8 +89,10 @@ API_KEY=tu-api-key-secreta-aqui-cambiala
 ENVIRONMENT=production
 
 # Redis (Upstash)
-REDIS_URL=redis://default:XXXX@us1-promoted-duck-12345.upstash.io:6379
+REDIS_URL=rediss://default:XXXX@us1-promoted-duck-12345.upstash.io:6379
 # 👆 Pega aquí el URL que copiaste de Upstash
+# ⚠️  Importante: Usa 'rediss://' (con doble 's') para SSL
+# Si Upstash te da 'redis://', el código lo convertirá automáticamente
 
 # SFTP API (Digital Ocean)
 SFTP_API_URL=https://sftp-api-production.up.railway.app

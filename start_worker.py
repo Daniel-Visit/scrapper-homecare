@@ -13,13 +13,19 @@ redis_url = os.environ.get('REDIS_URL')
 if not redis_url:
     raise ValueError("REDIS_URL environment variable is required")
 
+# Upstash requiere SSL - convertir redis:// a rediss://
+if redis_url.startswith('redis://'):
+    redis_url = redis_url.replace('redis://', 'rediss://', 1)
+    print(f"🔒 Usando SSL para conexión a Redis")
+
 # Configurar conexión a Redis
-# Upstash Redis ya maneja SSL automáticamente cuando usamos rediss:// o el puerto 6379 con TLS
 redis_conn = Redis.from_url(
     redis_url,
     decode_responses=False,
     socket_keepalive=True,
-    health_check_interval=30
+    health_check_interval=30,
+    socket_connect_timeout=10,
+    retry_on_timeout=True
 )
 
 # Verificar conexión

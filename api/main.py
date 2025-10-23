@@ -65,8 +65,13 @@ async def health_check():
     # Verificar conexión a Redis
     redis_connected = False
     try:
+        # Upstash requiere SSL - convertir redis:// a rediss://
+        redis_url = settings.redis_url
+        if redis_url.startswith('redis://'):
+            redis_url = redis_url.replace('redis://', 'rediss://', 1)
+        
         redis_client = Redis.from_url(
-            settings.redis_url,
+            redis_url,
             decode_responses=True,
             socket_keepalive=True,
             health_check_interval=30
@@ -138,8 +143,13 @@ async def trigger_scraping(
     
     try:
         # Conectar a Redis
+        # Upstash requiere SSL - convertir redis:// a rediss://
+        redis_url = settings.redis_url
+        if redis_url.startswith('redis://'):
+            redis_url = redis_url.replace('redis://', 'rediss://', 1)
+        
         redis_conn = Redis.from_url(
-            settings.redis_url,
+            redis_url,
             decode_responses=False,
             socket_keepalive=True,
             health_check_interval=30
