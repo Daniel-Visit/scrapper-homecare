@@ -40,38 +40,72 @@ class RemoteOrchestrator:
         """
         Inicia una sesión de navegador remoto en el viewer container.
         
-        NOTA Fase 2: Por ahora solo registra la sesión y prepara metadata.
-        La conexión real al navegador se implementa en Fase 3.
+        Fase 3: Conecta al display del viewer y lanza Chromium visible via noVNC.
         
         Args:
             session_id: ID único de la sesión
-            username: RUT para login
-            password: Contraseña para login
+            username: RUT para login (no usado aún, para futuro auto-fill)
+            password: Contraseña para login (no usado aún, para futuro auto-fill)
             
         Returns:
             Dict con metadata de la sesión
         """
-        logger.info(f"🚀 Registrando sesión remota: {session_id}")
+        logger.info(f"🚀 Iniciando sesión remota (Fase 3): {session_id}")
         
-        # Por ahora solo guardamos metadata (Fase 2)
-        # TODO Fase 3: Conectar al navegador en viewer via DISPLAY
-        session_data = {
-            'session_id': session_id,
-            'username': username,
-            'password': password,
-            'created_at': datetime.now(),
-            'login_completed': False,
-            'storage_state': None,
-            'playwright': None,  # Se inicializa en Fase 3
-            'browser': None,     # Se inicializa en Fase 3
-            'context': None,     # Se inicializa en Fase 3
-            'page': None         # Se inicializa en Fase 3
-        }
-        
-        self.active_sessions[session_id] = session_data
-        
-        logger.info(f"✅ Sesión {session_id} registrada (Fase 2 - sin navegador aún)")
-        return session_data
+        try:
+            playwright = await async_playwright().start()
+            
+            # Conectar al display del viewer
+            # El viewer tiene DISPLAY=:99 con Xvfb corriendo
+            logger.info(f"📺 Conectando a display {self.viewer_display} en {self.viewer_host}")
+            
+            browser = await playwright.chromium.launch(
+                headless=False,
+                args=[
+                    '--no-sandbox',
+                    '--disable-setuid-sandbox',
+                    '--disable-dev-shm-usage',
+                    '--disable-gpu',
+                    '--window-size=1280,720'
+                ],
+                env={
+                    'DISPLAY': self.viewer_display
+                }
+            )
+            
+            context = await browser.new_context(
+                accept_downloads=True,
+                viewport={'width': 1280, 'height': 720}
+            )
+            
+            page = await context.new_page()
+            
+            # Navegar a Cruz Blanca login
+            logger.info(f"🌐 Navegando a Cruz Blanca...")
+            await page.goto("https://www.cruzblanca.cl/wps/portal/", timeout=30000)
+            
+            # Guardar sesión activa
+            session_data = {
+                'session_id': session_id,
+                'username': username,
+                'password': password,
+                'created_at': datetime.now(),
+                'login_completed': False,
+                'storage_state': None,
+                'playwright': playwright,
+                'browser': browser,
+                'context': context,
+                'page': page
+            }
+            
+            self.active_sessions[session_id] = session_data
+            
+            logger.info(f"✅ Sesión {session_id} iniciada - navegador visible en noVNC")
+            return session_data
+            
+        except Exception as e:
+            logger.error(f"❌ Error iniciando sesión {session_id}: {e}")
+            raise
     
     async def wait_for_login(
         self,

@@ -8,12 +8,13 @@ Expone endpoints REST para:
 - (Opcional) Download de archivos desde SFTP
 """
 
-from fastapi import FastAPI, Header, HTTPException, status, Depends
+from fastapi import FastAPI, Header, HTTPException, status, Depends, BackgroundTasks
 from fastapi.responses import JSONResponse, HTMLResponse
 from redis import Redis
 from redis.exceptions import ConnectionError as RedisConnectionError
 from rq import Queue
 import time
+import asyncio
 from pathlib import Path
 
 from api.config import settings
@@ -21,9 +22,12 @@ from api.models import (
     HealthResponse, ErrorResponse, TriggerRequest, TriggerResponse,
     RunRequest, RunResponse  # API v2
 )
-from api.tasks import run_pipeline
+from api.tasks import run_pipeline, run_pipeline_with_state
 from api.remote_orchestrator import remote_orchestrator
 from api import __version__
+import logging
+
+logger = logging.getLogger(__name__)
 
 # Inicializar FastAPI
 app = FastAPI(
@@ -192,6 +196,79 @@ async def trigger_scraping(
 # API V2: Remote Browser con storageState
 # ====================================================================
 
+async def background_wait_and_process(
+    session_id: str,
+    request: RunRequest
+):
+    """
+    Tarea en background que espera login, captura storageState y encola job.
+    """
+    try:
+        logger.info(f"🔄 Background task iniciado para sesión {session_id}")
+        
+        # 1. Esperar login OK (máx 15 min)
+        login_ok = await remote_orchestrator.wait_for_login(session_id, timeout_seconds=900)
+        
+        if not login_ok:
+            logger.error(f"⏰ Timeout esperando login para {session_id}")
+            await remote_orchestrator.close_session(session_id)
+            return
+        
+        # 2. Capturar storageState
+        storage_state = await remote_orchestrator.capture_storage_state(session_id)
+        
+        if not storage_state:
+            logger.error(f"❌ No se pudo capturar storageState para {session_id}")
+            await remote_orchestrator.close_session(session_id)
+            return
+        
+        # 3. Generar job_id para el pipeline
+        timestamp = int(time.time())
+        job_id = f"{request.month.lower()}_{request.year}_{timestamp}"
+        
+        logger.info(f"📤 Encolando job {job_id} con storageState")
+        
+        # 4. Encolar job en RQ con storageState
+        redis_url = settings.redis_url
+        if redis_url.startswith('redis://'):
+            redis_url = redis_url.replace('redis://', 'rediss://', 1)
+        
+        redis_conn = Redis.from_url(
+            redis_url,
+            decode_responses=False,
+            socket_keepalive=True,
+            health_check_interval=30
+        )
+        queue = Queue(connection=redis_conn)
+        
+        job = queue.enqueue(
+            run_pipeline_with_state,
+            session_id=session_id,
+            storage_state=storage_state,
+            job_id=job_id,
+            year=request.year,
+            month=request.month.value,
+            prestador=request.prestador,
+            client_id=request.client_id,
+            job_timeout=f'{settings.job_timeout_minutes}m',
+            result_ttl=86400,
+            failure_ttl=86400
+        )
+        
+        logger.info(f"✅ Job {job_id} encolado exitosamente (RQ job: {job.id})")
+        
+        # 5. Cerrar sesión de navegador (ya no la necesitamos)
+        await remote_orchestrator.close_session(session_id)
+        logger.info(f"🔒 Sesión {session_id} cerrada")
+        
+    except Exception as e:
+        logger.error(f"❌ Error en background task para {session_id}: {e}")
+        try:
+            await remote_orchestrator.close_session(session_id)
+        except:
+            pass
+
+
 @app.post(
     "/api/v2/run",
     response_model=RunResponse,
@@ -201,7 +278,10 @@ async def trigger_scraping(
     description="Inicia sesión de navegador remoto visible via noVNC. El usuario hace login manualmente, el sistema detecta login OK, captura storageState y ejecuta pipeline headless.",
     dependencies=[Depends(verify_api_key)]
 )
-async def run_remote_browser(request: RunRequest):
+async def run_remote_browser(
+    request: RunRequest,
+    background_tasks: BackgroundTasks
+):
     """
     Endpoint v2 que usa navegador remoto con storageState.
     
@@ -214,6 +294,7 @@ async def run_remote_browser(request: RunRequest):
     
     Args:
         request: RunRequest con datos del scraping
+        background_tasks: FastAPI background tasks
         
     Returns:
         RunResponse con session_id y viewer_url
@@ -231,15 +312,12 @@ async def run_remote_browser(request: RunRequest):
         )
         
         # URL del viewer noVNC
-        # En Docker, el viewer está en el host "viewer", puerto 6080
-        # Para el usuario (desde fuera de Docker), usar localhost:6080
         viewer_url = f"http://localhost:6080/vnc.html?resize=remote&autoconnect=true"
         
-        # TODO: Implementar background task que:
-        # 1. Espera login OK con wait_for_login()
-        # 2. Captura storageState con capture_storage_state()
-        # 3. Encola job RQ con run_pipeline_with_state()
-        # 4. Cierra sesión con close_session()
+        # Lanzar background task que espera login y procesa
+        background_tasks.add_task(background_wait_and_process, session_id, request)
+        
+        logger.info(f"✅ Sesión {session_id} iniciada, background task agregado")
         
         return RunResponse(
             session_id=session_id,
@@ -249,6 +327,7 @@ async def run_remote_browser(request: RunRequest):
         )
         
     except Exception as e:
+        logger.error(f"❌ Error iniciando sesión remota: {e}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Error al iniciar sesión remota: {str(e)}"

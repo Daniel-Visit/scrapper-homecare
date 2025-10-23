@@ -8,7 +8,10 @@ services:
       - "6080:6080"
     environment:
       - DISPLAY=:99
+    volumes:
+      - x11-socket:/tmp/.X11-unix
     shm_size: '2gb'
+    ipc: shareable
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:6080/"]
       interval: 10s
@@ -28,14 +31,17 @@ services:
       - SFTP_API_KEY=${SFTP_API_KEY:-xs0*Zff7V6BemA3>r<[}
       - SFTP_BASE_PATH=${SFTP_BASE_PATH:-/scraping_data}
       - VIEWER_HOST=viewer
+      - DISPLAY=:99
       - DATABASE_PATH=/data/scraper.db
       - API_KEY=${API_KEY:-scraping-homecare-2025-secret-key}
       - DATA_DIR=/data
       - ENVIRONMENT=development
     volumes:
       - ./data:/data
+      - x11-socket:/tmp/.X11-unix
     depends_on:
       - viewer
+    ipc: "service:viewer"
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/healthz"]
       interval: 10s
@@ -62,6 +68,7 @@ services:
   #   restart: unless-stopped
 
 volumes:
+  x11-socket:
   data:
     driver: local
 
