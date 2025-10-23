@@ -9,11 +9,12 @@ Expone endpoints REST para:
 """
 
 from fastapi import FastAPI, Header, HTTPException, status, Depends
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, HTMLResponse
 from redis import Redis
 from redis.exceptions import ConnectionError as RedisConnectionError
 from rq import Queue
 import time
+from pathlib import Path
 
 from api.config import settings
 from api.models import HealthResponse, ErrorResponse, TriggerRequest, TriggerResponse
@@ -89,8 +90,21 @@ async def root():
     return JSONResponse({
         "message": "Scraping Microservice API",
         "version": __version__,
-        "docs": "/docs"
+        "docs": "/docs",
+        "test": "/test"
     })
+
+
+# Test page endpoint
+@app.get("/test", response_class=HTMLResponse, include_in_schema=False)
+async def test_page():
+    """Página de testing de la API."""
+    html_path = Path(__file__).parent / "templates" / "test_api.html"
+    
+    if html_path.exists():
+        return HTMLResponse(content=html_path.read_text(), status_code=200)
+    else:
+        return HTMLResponse(content="<h1>Test page not found</h1>", status_code=404)
 
 
 # ====================================================================
