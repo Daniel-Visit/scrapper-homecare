@@ -73,9 +73,9 @@ async def health_check():
     # Verificar conexión a Redis
     redis_connected = False
     try:
-        # Upstash requiere SSL - convertir redis:// a rediss://
+        # Upstash requiere SSL - solo convertir si es upstash.io
         redis_url = settings.redis_url
-        if redis_url.startswith('redis://'):
+        if redis_url.startswith('redis://') and 'upstash.io' in redis_url:
             redis_url = redis_url.replace('redis://', 'rediss://', 1)
         
         redis_client = Redis.from_url(
@@ -151,9 +151,9 @@ async def trigger_scraping(
     
     try:
         # Conectar a Redis
-        # Upstash requiere SSL - convertir redis:// a rediss://
+        # Upstash requiere SSL - solo convertir si es upstash.io
         redis_url = settings.redis_url
-        if redis_url.startswith('redis://'):
+        if redis_url.startswith('redis://') and 'upstash.io' in redis_url:
             redis_url = redis_url.replace('redis://', 'rediss://', 1)
         
         redis_conn = Redis.from_url(
@@ -201,12 +201,16 @@ async def background_wait_and_process(
     request: RunRequest
 ):
     """
-    Tarea en background que espera login, captura storageState y encola job.
+    Tarea en background que lanza navegador, espera login, captura storageState y encola job.
     """
     try:
         logger.info(f"🔄 Background task iniciado para sesión {session_id}")
         
-        # 1. Esperar login OK (máx 15 min)
+        # 1. Lanzar navegador remoto
+        await remote_orchestrator.start_remote_session(session_id)
+        logger.info(f"✅ Navegador lanzado para sesión {session_id}")
+        
+        # 2. Esperar login OK (máx 15 min)
         login_ok = await remote_orchestrator.wait_for_login(session_id, timeout_seconds=900)
         
         if not login_ok:
@@ -214,7 +218,7 @@ async def background_wait_and_process(
             await remote_orchestrator.close_session(session_id)
             return
         
-        # 2. Capturar storageState
+        # 3. Capturar storageState
         storage_state = await remote_orchestrator.capture_storage_state(session_id)
         
         if not storage_state:
@@ -222,15 +226,15 @@ async def background_wait_and_process(
             await remote_orchestrator.close_session(session_id)
             return
         
-        # 3. Generar job_id para el pipeline
+        # 4. Generar job_id para el pipeline
         timestamp = int(time.time())
         job_id = f"{request.month.lower()}_{request.year}_{timestamp}"
         
         logger.info(f"📤 Encolando job {job_id} con storageState")
         
-        # 4. Encolar job en RQ con storageState
+        # 5. Encolar job en RQ con storageState
         redis_url = settings.redis_url
-        if redis_url.startswith('redis://'):
+        if redis_url.startswith('redis://') and 'upstash.io' in redis_url:
             redis_url = redis_url.replace('redis://', 'rediss://', 1)
         
         redis_conn = Redis.from_url(
@@ -303,33 +307,20 @@ async def run_remote_browser(
     timestamp = int(time.time())
     session_id = f"session_{request.month.lower()}_{request.year}_{timestamp}"
     
-    try:
-        # Iniciar sesión remota (navegador en viewer)
-        await remote_orchestrator.start_remote_session(
-            session_id=session_id
-        )
-        
-        # URL del viewer noVNC
-        viewer_url = f"http://localhost:6080/vnc.html?resize=remote&autoconnect=true"
-        
-        # Lanzar background task que espera login y procesa
-        background_tasks.add_task(background_wait_and_process, session_id, request)
-        
-        logger.info(f"✅ Sesión {session_id} iniciada, background task agregado")
-        
-        return RunResponse(
-            session_id=session_id,
-            viewer_url=viewer_url,
-            message="Sesión iniciada. Abre el viewer_url en un popup, haz login en Cruz Blanca y resuelve el CAPTCHA. El sistema detectará automáticamente cuando completes el login y continuará el proceso en segundo plano.",
-            estimated_time_minutes=15
-        )
-        
-    except Exception as e:
-        logger.error(f"❌ Error iniciando sesión remota: {e}")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Error al iniciar sesión remota: {str(e)}"
-        )
+    # URL del viewer noVNC
+    viewer_url = f"http://localhost:6080/vnc.html?resize=remote&autoconnect=true"
+    
+    # Lanzar background task que inicia navegador, espera login y procesa
+    background_tasks.add_task(background_wait_and_process, session_id, request)
+    
+    logger.info(f"✅ Sesión {session_id} encolada, background task iniciado")
+    
+    return RunResponse(
+        session_id=session_id,
+        viewer_url=viewer_url,
+        message="Sesión iniciada. Abre el viewer_url en un popup, haz login en Cruz Blanca y resuelve el CAPTCHA. El sistema detectará automáticamente cuando completes el login y continuará el proceso en segundo plano.",
+        estimated_time_minutes=15
+    )
 
 
 # Exception handlers
