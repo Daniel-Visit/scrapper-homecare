@@ -18,8 +18,9 @@ COPY requirements-api.txt .
 # Install Python dependencies
 RUN pip install --no-cache-dir -r requirements-api.txt
 
-# Install Playwright and browsers
-RUN playwright install --with-deps chromium
+# Install Playwright (sin browsers - solo el paquete Python)
+# Los browsers se instalan en el viewer container
+# La API solo necesita el paquete para imports
 
 # Copy application code
 COPY . .

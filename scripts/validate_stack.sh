@@ -118,6 +118,33 @@ if docker-compose ps | grep "scraper-api" > /dev/null 2>&1; then
         else
             echo -e "${YELLOW}⚠️  Redis no conectado (esperado si no está configurado)${NC}"
         fi
+        
+        # Test /api/v2/run endpoint (Checkpoint Fase 2)
+        echo ""
+        echo "🔟 Testeando endpoint /api/v2/run (Fase 2)..."
+        
+        # Usar archivo temporal para capturar response y status code separados
+        TEMP_RESPONSE=$(mktemp)
+        HTTP_CODE=$(curl -s -w "%{http_code}" -o "$TEMP_RESPONSE" -X POST http://localhost:8000/api/v2/run \
+            -H "Content-Type: application/json" \
+            -H "X-API-Key: scraping-homecare-2025-secret-key" \
+            -d '{"client_id":"test","year":2025,"month":"FEBRERO","prestador":null,"username":"test","password":"test"}')
+        
+        RESPONSE_BODY=$(cat "$TEMP_RESPONSE")
+        rm "$TEMP_RESPONSE"
+        
+        if [ "$HTTP_CODE" -eq 202 ]; then
+            if echo "$RESPONSE_BODY" | grep -q '"session_id"' && echo "$RESPONSE_BODY" | grep -q '"viewer_url"'; then
+                print_status 0 "Endpoint /api/v2/run devuelve session_id y viewer_url"
+                echo "   Response: $RESPONSE_BODY"
+            else
+                print_status 1 "Endpoint responde pero falta session_id o viewer_url"
+            fi
+        else
+            echo -e "${RED}❌ Endpoint /api/v2/run falló (HTTP $HTTP_CODE)${NC}"
+            echo "   Response: $RESPONSE_BODY"
+            exit 1
+        fi
     else
         echo -e "${YELLOW}⚠️  API no responde (HTTP $API_HTTP_CODE) - esperado si no está habilitada${NC}"
     fi

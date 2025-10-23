@@ -40,6 +40,9 @@ class RemoteOrchestrator:
         """
         Inicia una sesión de navegador remoto en el viewer container.
         
+        NOTA Fase 2: Por ahora solo registra la sesión y prepara metadata.
+        La conexión real al navegador se implementa en Fase 3.
+        
         Args:
             session_id: ID único de la sesión
             username: RUT para login
@@ -48,57 +51,27 @@ class RemoteOrchestrator:
         Returns:
             Dict con metadata de la sesión
         """
-        logger.info(f"🚀 Iniciando sesión remota: {session_id}")
+        logger.info(f"🚀 Registrando sesión remota: {session_id}")
         
-        try:
-            playwright = await async_playwright().start()
-            
-            # Conectar al Chromium que corre en el display del viewer
-            # Nota: Chromium debe estar corriendo en el viewer container
-            browser = await playwright.chromium.launch(
-                headless=False,
-                args=[
-                    f'--display={self.viewer_display}',
-                    '--no-sandbox',
-                    '--disable-setuid-sandbox',
-                    '--disable-dev-shm-usage',
-                    '--window-size=1280,720'
-                ]
-            )
-            
-            context = await browser.new_context(
-                accept_downloads=True,
-                viewport={'width': 1280, 'height': 720}
-            )
-            
-            page = await context.new_page()
-            
-            # Navegar a la página de login de Cruz Blanca
-            logger.info(f"📄 Navegando a Cruz Blanca login...")
-            await page.goto("https://www.cruzblanca.cl/wps/portal/")
-            
-            # Guardar referencias de la sesión
-            session_data = {
-                'session_id': session_id,
-                'playwright': playwright,
-                'browser': browser,
-                'context': context,
-                'page': page,
-                'username': username,
-                'password': password,
-                'created_at': datetime.now(),
-                'login_completed': False,
-                'storage_state': None
-            }
-            
-            self.active_sessions[session_id] = session_data
-            
-            logger.info(f"✅ Sesión {session_id} iniciada correctamente")
-            return session_data
-            
-        except Exception as e:
-            logger.error(f"❌ Error iniciando sesión {session_id}: {e}")
-            raise
+        # Por ahora solo guardamos metadata (Fase 2)
+        # TODO Fase 3: Conectar al navegador en viewer via DISPLAY
+        session_data = {
+            'session_id': session_id,
+            'username': username,
+            'password': password,
+            'created_at': datetime.now(),
+            'login_completed': False,
+            'storage_state': None,
+            'playwright': None,  # Se inicializa en Fase 3
+            'browser': None,     # Se inicializa en Fase 3
+            'context': None,     # Se inicializa en Fase 3
+            'page': None         # Se inicializa en Fase 3
+        }
+        
+        self.active_sessions[session_id] = session_data
+        
+        logger.info(f"✅ Sesión {session_id} registrada (Fase 2 - sin navegador aún)")
+        return session_data
     
     async def wait_for_login(
         self,
