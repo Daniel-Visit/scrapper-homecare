@@ -80,9 +80,9 @@ class RemoteOrchestrator:
             
             page = await context.new_page()
             
-            # Navegar a Cruz Blanca login
+            # Navegar a Cruz Blanca login (redirige automáticamente al login si no estás autenticado)
             logger.info(f"🌐 Navegando a Cruz Blanca...")
-            await page.goto("https://www.cruzblanca.cl/wps/portal/", timeout=30000)
+            await page.goto("https://www.cruzblanca.cl/wps/portal/Private/Privado/Home", timeout=30000)
             
             # Guardar sesión activa
             session_data = {
