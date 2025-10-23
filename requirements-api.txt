@@ -1,0 +1,23 @@
+# API Framework
+fastapi==0.109.0
+uvicorn[standard]==0.27.0
+
+# Pydantic v2 (models y settings)
+pydantic==2.5.0
+pydantic-settings==2.1.0
+
+# Task Queue
+rq==1.16.0
+redis==5.0.1
+
+# HTTP Client (para SFTP API)
+httpx==0.26.0
+
+# Utilities
+python-dotenv==1.0.0
+
+# Dependencias del código existente (scraper/extractor)
+playwright==1.42.0
+pdfplumber==0.10.3
+jsonschema==4.20.0
+

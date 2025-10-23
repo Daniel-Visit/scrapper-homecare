@@ -1,0 +1,266 @@
+{
+  "info": {
+    "name": "SFTP API",
+    "description": "API HTTP para operaciones SFTP (SSH File Transfer Protocol) sobre servidor remoto.\n\n**Base URL:** https://sftp-api-production.up.railway.app\n\n**Autenticación:** Todas las requests (excepto /healthz) requieren header `X-API-Key`",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+    "version": "1.2.0"
+  },
+  "item": [
+    {
+      "name": "Health Check",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{base_url}}/healthz",
+          "host": ["{{base_url}}"],
+          "path": ["healthz"]
+        },
+        "description": "Verifica que la API está funcionando. No requiere autenticación."
+      },
+      "response": []
+    },
+    {
+      "name": "List Directory",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "X-API-Key",
+            "value": "{{api_key}}",
+            "type": "text"
+          }
+        ],
+        "url": {
+          "raw": "{{base_url}}/list?path=/",
+          "host": ["{{base_url}}"],
+          "path": ["list"],
+          "query": [
+            {
+              "key": "path",
+              "value": "/",
+              "description": "Ruta relativa a BASE_DIR"
+            }
+          ]
+        },
+        "description": "Lista archivos y subdirectorios de una ruta específica. Retorna nombre, tamaño, permisos y timestamp de cada elemento."
+      },
+      "response": []
+    },
+    {
+      "name": "Create Directory",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "X-API-Key",
+            "value": "{{api_key}}",
+            "type": "text"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json",
+            "type": "text"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"path\": \"/nueva_carpeta\"\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        },
+        "url": {
+          "raw": "{{base_url}}/mkdir",
+          "host": ["{{base_url}}"],
+          "path": ["mkdir"]
+        },
+        "description": "Crea un directorio. Si no existe el directorio padre, lo crea recursivamente."
+      },
+      "response": []
+    },
+    {
+      "name": "Upload File",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "X-API-Key",
+            "value": "{{api_key}}",
+            "type": "text"
+          }
+        ],
+        "body": {
+          "mode": "formdata",
+          "formdata": [
+            {
+              "key": "remote_path",
+              "value": "/uploads/documento.pdf",
+              "description": "Ruta destino en el servidor SFTP (relativa a BASE_DIR)",
+              "type": "text"
+            },
+            {
+              "key": "file",
+              "description": "Archivo a subir (seleccionar desde tu computadora)",
+              "type": "file",
+              "src": []
+            }
+          ]
+        },
+        "url": {
+          "raw": "{{base_url}}/upload",
+          "host": ["{{base_url}}"],
+          "path": ["upload"]
+        },
+        "description": "Sube un archivo al servidor SFTP. Solo permite subir archivos individuales (no directorios). Crea directorios padre si no existen."
+      },
+      "response": []
+    },
+    {
+      "name": "Download File",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "X-API-Key",
+            "value": "{{api_key}}",
+            "type": "text"
+          }
+        ],
+        "url": {
+          "raw": "{{base_url}}/download?path=/archivo.txt",
+          "host": ["{{base_url}}"],
+          "path": ["download"],
+          "query": [
+            {
+              "key": "path",
+              "value": "/archivo.txt",
+              "description": "Ruta del archivo a descargar (relativa a BASE_DIR)"
+            }
+          ]
+        },
+        "description": "Descarga un archivo del servidor SFTP. Retorna el archivo como streaming response."
+      },
+      "response": []
+    },
+    {
+      "name": "Delete File",
+      "request": {
+        "method": "DELETE",
+        "header": [
+          {
+            "key": "X-API-Key",
+            "value": "{{api_key}}",
+            "type": "text"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json",
+            "type": "text"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"path\": \"/archivo.txt\",\n  \"recursive\": false\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        },
+        "url": {
+          "raw": "{{base_url}}/delete",
+          "host": ["{{base_url}}"],
+          "path": ["delete"]
+        },
+        "description": "Elimina un archivo o directorio. Si `recursive=true`, elimina directorios con contenido. No permite eliminar BASE_DIR."
+      },
+      "response": []
+    },
+    {
+      "name": "Delete Directory (Recursive)",
+      "request": {
+        "method": "DELETE",
+        "header": [
+          {
+            "key": "X-API-Key",
+            "value": "{{api_key}}",
+            "type": "text"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json",
+            "type": "text"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"path\": \"/carpeta_con_archivos\",\n  \"recursive\": true\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        },
+        "url": {
+          "raw": "{{base_url}}/delete",
+          "host": ["{{base_url}}"],
+          "path": ["delete"]
+        },
+        "description": "Elimina un directorio y todo su contenido recursivamente."
+      },
+      "response": []
+    },
+    {
+      "name": "Upload to Nested Path",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "X-API-Key",
+            "value": "{{api_key}}",
+            "type": "text"
+          }
+        ],
+        "body": {
+          "mode": "formdata",
+          "formdata": [
+            {
+              "key": "remote_path",
+              "value": "/clientes/acme/facturas/factura_2024.pdf",
+              "description": "Ruta con múltiples niveles (se crean automáticamente)",
+              "type": "text"
+            },
+            {
+              "key": "file",
+              "type": "file",
+              "src": []
+            }
+          ]
+        },
+        "url": {
+          "raw": "{{base_url}}/upload",
+          "host": ["{{base_url}}"],
+          "path": ["upload"]
+        },
+        "description": "Ejemplo de subida a ruta anidada. Los directorios intermedios se crean automáticamente."
+      },
+      "response": []
+    }
+  ],
+  "variable": [
+    {
+      "key": "base_url",
+      "value": "https://sftp-api-production.up.railway.app",
+      "type": "string"
+    },
+    {
+      "key": "api_key",
+      "value": "xs0*Zff7V6BemA3>r<[",
+      "type": "string"
+    }
+  ]
+}
+

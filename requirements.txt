@@ -1,0 +1,14 @@
+# Core - Scraping
+playwright==1.42.0
+
+# Data models
+pydantic>=2.7.4
+
+# PDF extraction
+pdfplumber==0.10.3
+
+# JSON validation
+jsonschema==4.20.0
+
+# HTTP client (para futuro SFTP API)
+httpx==0.27.0
