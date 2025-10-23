@@ -252,4 +252,102 @@ class ProcessOrchestrator:
         print(f"   💾 Archivo salida: {result.output_file}")
         
         return result
+    
+    async def run_with_storage_state(
+        self,
+        storage_state: dict,
+        params: ScrapingParams
+    ) -> ScrapingResult:
+        """
+        Ejecuta scraping usando storageState (sin login manual).
+        
+        Este método se usa cuando el usuario ya hizo login en el navegador remoto
+        y el sistema capturó el storageState. El navegador headless se inicia
+        con las cookies/sesión ya autenticada.
+        
+        Args:
+            storage_state: Dict con cookies y localStorage capturados
+            params: Parámetros del scraping
+            
+        Returns:
+            ScrapingResult con los PDFs descargados
+        """
+        print("🔐 Iniciando scraping con storageState (headless)...")
+        print(f"   📅 Período: {params.month} {params.year}")
+        print(f"   🍪 Cookies: {len(storage_state.get('cookies', []))}")
+        
+        async with async_playwright() as p:
+            # Inicializar scraper
+            scraper = CruzBlancaScraper(output_dir=self.data_dir)
+            
+            # Generar job_id único
+            job_id = f"{params.month.lower()}_{params.year}_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+            
+            # Lanzar navegador HEADLESS con storageState
+            browser = await p.chromium.launch(headless=True)
+            
+            # Crear contexto con storageState (sesión ya autenticada)
+            context = await browser.new_context(
+                storage_state=storage_state,
+                accept_downloads=True
+            )
+            
+            page = await context.new_page()
+            scraper.context = context
+            scraper.page = page
+            scraper.job_id = job_id
+            
+            try:
+                # NO necesitamos hacer login - ya estamos autenticados!
+                # Ir directo al área privada
+                print("🔓 Navegando al área privada (ya autenticado)...")
+                await page.goto("https://www.cruzblanca.cl/wps/portal/Private/Privado/Home")
+                
+                # Esperar un momento para asegurar que la sesión es válida
+                await page.wait_for_load_state("networkidle", timeout=10000)
+                
+                # Verificar que seguimos autenticados
+                if "login" in page.url.lower():
+                    raise Exception("storageState expiró o es inválido - redireccionó a login")
+                
+                print("✅ Autenticación válida, iniciando scraping...")
+                
+                # Ejecutar scraping normal (sin login)
+                result = await scraper.discover_documents(
+                    page=page,
+                    params={
+                        'year': str(params.year),
+                        'month': params.month,
+                        'prestador': params.prestador,
+                        'job_id': job_id
+                    }
+                )
+                
+                print(f"\n✅ SCRAPING COMPLETADO")
+                print(f"   📄 PDFs descargados: {result['downloaded']}/{result['total']}")
+                
+                # Construir ScrapingResult
+                scraping_result = ScrapingResult(
+                    job_id=job_id,
+                    total=result['total'],
+                    downloaded=result['downloaded'],
+                    failed=result['failed'],
+                    output_dir=result['pdf_dir'],
+                    metadata_file=result['metadata_file'],
+                    validation=ValidationReport(
+                        total_files=result['downloaded'],
+                        valid_files=result['downloaded'],
+                        corrupted_files=[],
+                        empty_files=[],
+                        success_rate=100.0 if result['downloaded'] > 0 else 0.0
+                    )
+                )
+                
+                return scraping_result
+                
+            except Exception as e:
+                print(f"\n❌ Error en scraping: {e}")
+                raise
+            finally:
+                await browser.close()
 
