@@ -64,7 +64,12 @@ async def health_check():
     # Verificar conexión a Redis
     redis_connected = False
     try:
-        redis_client = Redis.from_url(settings.redis_url, decode_responses=True)
+        redis_client = Redis.from_url(
+            settings.redis_url,
+            decode_responses=True,
+            socket_keepalive=True,
+            health_check_interval=30
+        )
         redis_client.ping()
         redis_connected = True
     except (RedisConnectionError, Exception):
@@ -119,7 +124,12 @@ async def trigger_scraping(
     
     try:
         # Conectar a Redis
-        redis_conn = Redis.from_url(settings.redis_url, decode_responses=False)
+        redis_conn = Redis.from_url(
+            settings.redis_url,
+            decode_responses=False,
+            socket_keepalive=True,
+            health_check_interval=30
+        )
         queue = Queue(connection=redis_conn)
         
         # Encolar job
