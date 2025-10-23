@@ -4,7 +4,6 @@ Script de inicio del worker RQ con soporte SSL para Upstash Redis.
 """
 
 import os
-import ssl
 from redis import Redis
 from rq import Worker
 
@@ -14,13 +13,12 @@ redis_url = os.environ.get('REDIS_URL')
 if not redis_url:
     raise ValueError("REDIS_URL environment variable is required")
 
-# Configurar SSL para Upstash
+# Configurar conexión a Redis
+# Upstash Redis ya maneja SSL automáticamente cuando usamos rediss:// o el puerto 6379 con TLS
 redis_conn = Redis.from_url(
     redis_url,
     decode_responses=False,
-    ssl_cert_reqs=ssl.CERT_NONE,  # Upstash maneja los certificados
     socket_keepalive=True,
-    socket_keepalive_options={},
     health_check_interval=30
 )
 
