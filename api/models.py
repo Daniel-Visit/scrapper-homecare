@@ -128,3 +128,55 @@ class ErrorResponse(BaseModel):
             }
         }
 
+
+# ====================================================================
+# MODELS PARA API V2 (Remote Browser)
+# ====================================================================
+
+class RunRequest(BaseModel):
+    """Request para endpoint /api/v2/run (remote browser con storageState)."""
+    
+    client_id: str = Field(..., description="ID del cliente que solicita el proceso")
+    year: int = Field(..., ge=2020, le=2030, description="Año del período a procesar")
+    month: MonthEnum = Field(..., description="Mes del período a procesar")
+    prestador: Optional[str] = Field(
+        None,
+        description="RUT y nombre del prestador (opcional, si es None procesa todos)"
+    )
+    username: str = Field(..., description="RUT del usuario para login")
+    password: str = Field(..., description="Contraseña del usuario")
+    
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "client_id": "spring-client-001",
+                "year": 2025,
+                "month": "FEBRERO",
+                "prestador": None,
+                "username": "12345678-9",
+                "password": "tu-contraseña"
+            }
+        }
+
+
+class RunResponse(BaseModel):
+    """Response del endpoint /api/v2/run."""
+    
+    session_id: str = Field(..., description="ID único de la sesión de navegador")
+    viewer_url: str = Field(..., description="URL del viewer noVNC para que el usuario vea el navegador")
+    message: str = Field(..., description="Mensaje descriptivo")
+    estimated_time_minutes: int = Field(
+        default=15,
+        description="Tiempo estimado total (incluye login manual + scraping automático)"
+    )
+    
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "session_id": "session_febrero_2025_1729634567",
+                "viewer_url": "http://localhost:6080/vnc.html?resize=remote",
+                "message": "Sesión iniciada. Abre el viewer_url en popup, haz login y resuelve CAPTCHA. El sistema detectará automáticamente cuando completes el login.",
+                "estimated_time_minutes": 15
+            }
+        }
+

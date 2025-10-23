@@ -17,8 +17,12 @@ import time
 from pathlib import Path
 
 from api.config import settings
-from api.models import HealthResponse, ErrorResponse, TriggerRequest, TriggerResponse
+from api.models import (
+    HealthResponse, ErrorResponse, TriggerRequest, TriggerResponse,
+    RunRequest, RunResponse  # API v2
+)
 from api.tasks import run_pipeline
+from api.remote_orchestrator import remote_orchestrator
 from api import __version__
 
 # Inicializar FastAPI
@@ -181,6 +185,73 @@ async def trigger_scraping(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Error al encolar job: {str(e)}"
+        )
+
+
+# ====================================================================
+# API V2: Remote Browser con storageState
+# ====================================================================
+
+@app.post(
+    "/api/v2/run",
+    response_model=RunResponse,
+    status_code=status.HTTP_202_ACCEPTED,
+    tags=["API v2 - Remote Browser"],
+    summary="Iniciar scraping con navegador remoto",
+    description="Inicia sesión de navegador remoto visible via noVNC. El usuario hace login manualmente, el sistema detecta login OK, captura storageState y ejecuta pipeline headless.",
+    dependencies=[Depends(verify_api_key)]
+)
+async def run_remote_browser(request: RunRequest):
+    """
+    Endpoint v2 que usa navegador remoto con storageState.
+    
+    Flujo:
+    1. Genera session_id único
+    2. Inicia navegador en viewer container (visible via noVNC)
+    3. Navega a Cruz Blanca login
+    4. Devuelve viewer_url para que usuario vea el navegador
+    5. En background: espera login OK, captura storageState, lanza worker headless
+    
+    Args:
+        request: RunRequest con datos del scraping
+        
+    Returns:
+        RunResponse con session_id y viewer_url
+    """
+    # Generar session_id único
+    timestamp = int(time.time())
+    session_id = f"session_{request.month.lower()}_{request.year}_{timestamp}"
+    
+    try:
+        # Iniciar sesión remota (navegador en viewer)
+        await remote_orchestrator.start_remote_session(
+            session_id=session_id,
+            username=request.username,
+            password=request.password
+        )
+        
+        # URL del viewer noVNC
+        # En Docker, el viewer está en el host "viewer", puerto 6080
+        # Para el usuario (desde fuera de Docker), usar localhost:6080
+        viewer_url = f"http://localhost:6080/vnc.html?resize=remote&autoconnect=true"
+        
+        # TODO: Implementar background task que:
+        # 1. Espera login OK con wait_for_login()
+        # 2. Captura storageState con capture_storage_state()
+        # 3. Encola job RQ con run_pipeline_with_state()
+        # 4. Cierra sesión con close_session()
+        
+        return RunResponse(
+            session_id=session_id,
+            viewer_url=viewer_url,
+            message="Sesión iniciada. Abre el viewer_url en un popup, haz login en Cruz Blanca y resuelve el CAPTCHA. El sistema detectará automáticamente cuando completes el login y continuará el proceso en segundo plano.",
+            estimated_time_minutes=15
+        )
+        
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error al iniciar sesión remota: {str(e)}"
         )
 
 

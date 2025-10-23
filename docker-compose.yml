@@ -1,0 +1,64 @@
+version: '3.8'
+
+services:
+  viewer:
+    build: ./docker/viewer
+    container_name: scraper-viewer
+    ports:
+      - "6080:6080"
+    environment:
+      - DISPLAY=:99
+    shm_size: '2gb'
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:6080/"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    restart: unless-stopped
+
+  # API service (to be implemented in Phase 2)
+  # api:
+  #   build: .
+  #   container_name: scraper-api
+  #   ports:
+  #     - "8000:8000"
+  #   environment:
+  #     - REDIS_URL=${REDIS_URL}
+  #     - SFTP_API_URL=${SFTP_API_URL}
+  #     - SFTP_API_KEY=${SFTP_API_KEY}
+  #     - VIEWER_HOST=viewer
+  #     - DATABASE_PATH=/data/scraper.db
+  #     - API_KEY=${API_KEY:-scraping-homecare-2025-secret-key}
+  #   volumes:
+  #     - ./data:/data
+  #   depends_on:
+  #     - viewer
+  #   healthcheck:
+  #     test: ["CMD", "curl", "-f", "http://localhost:8000/healthz"]
+  #     interval: 10s
+  #     timeout: 5s
+  #     retries: 3
+  #   restart: unless-stopped
+
+  # Worker service (to be implemented in Phase 2)
+  # worker:
+  #   build: .
+  #   container_name: scraper-worker
+  #   command: python start_worker.py
+  #   environment:
+  #     - REDIS_URL=${REDIS_URL}
+  #     - SFTP_API_URL=${SFTP_API_URL}
+  #     - SFTP_API_KEY=${SFTP_API_KEY}
+  #     - DATABASE_PATH=/data/scraper.db
+  #     - VIEWER_HOST=viewer
+  #   volumes:
+  #     - ./data:/data
+  #   depends_on:
+  #     - viewer
+  #   restart: unless-stopped
+
+volumes:
+  data:
+    driver: local
+
