@@ -203,39 +203,70 @@ async def background_wait_and_process(
     """
     Tarea en background que lanza navegador, espera login, captura storageState y encola job.
     """
+    import traceback
+    logger.info(f"🔄🔄🔄 BACKGROUND TASK INICIADO para sesión {session_id}")
+    print(f"🔄🔄🔄 BACKGROUND TASK INICIADO para sesión {session_id}", flush=True)
+    
     try:
-        logger.info(f"🔄 Background task iniciado para sesión {session_id}")
-        
         # 1. Lanzar navegador remoto
+        logger.info(f"🚀 Lanzando navegador para sesión {session_id}")
+        print(f"🚀 Lanzando navegador para sesión {session_id}", flush=True)
+        
         await remote_orchestrator.start_remote_session(session_id)
+        
         logger.info(f"✅ Navegador lanzado para sesión {session_id}")
+        print(f"✅ Navegador lanzado para sesión {session_id}", flush=True)
         
         # 2. Esperar login OK (máx 15 min)
+        logger.info(f"⏳ Iniciando wait_for_login para {session_id}")
+        print(f"⏳ Iniciando wait_for_login", flush=True)
+        
         login_ok = await remote_orchestrator.wait_for_login(session_id, timeout_seconds=900)
+        
+        logger.info(f"🔍 wait_for_login retornó: {login_ok}")
+        print(f"🔍 wait_for_login retornó: {login_ok}", flush=True)
         
         if not login_ok:
             logger.error(f"⏰ Timeout esperando login para {session_id}")
+            print(f"⏰ Timeout esperando login", flush=True)
             await remote_orchestrator.close_session(session_id)
             return
         
         # 3. Capturar storageState
+        logger.info(f"📸 Capturando storageState para {session_id}")
+        print(f"📸 Capturando storageState", flush=True)
+        
         storage_state = await remote_orchestrator.capture_storage_state(session_id)
+        
+        logger.info(f"🔍 storageState capturado: {storage_state is not None}")
+        print(f"🔍 storageState: {storage_state is not None}", flush=True)
         
         if not storage_state:
             logger.error(f"❌ No se pudo capturar storageState para {session_id}")
+            print(f"❌ No se pudo capturar storageState", flush=True)
             await remote_orchestrator.close_session(session_id)
             return
         
         # 4. Generar job_id para el pipeline
+        logger.info(f"🔢 Generando job_id para {session_id}")
+        print(f"🔢 Generando job_id", flush=True)
+        
         timestamp = int(time.time())
         job_id = f"{request.month.lower()}_{request.year}_{timestamp}"
         
         logger.info(f"📤 Encolando job {job_id} con storageState")
+        print(f"📤 Encolando job {job_id}", flush=True)
         
         # 5. Encolar job en RQ con storageState
+        logger.info(f"🔗 Conectando a Redis para {session_id}")
+        print(f"🔗 Conectando a Redis", flush=True)
+        
         redis_url = settings.redis_url
         if redis_url.startswith('redis://') and 'upstash.io' in redis_url:
             redis_url = redis_url.replace('redis://', 'rediss://', 1)
+        
+        logger.info(f"🔗 Creando conexión Redis")
+        print(f"🔗 Creando conexión Redis", flush=True)
         
         redis_conn = Redis.from_url(
             redis_url,
@@ -243,30 +274,47 @@ async def background_wait_and_process(
             socket_keepalive=True,
             health_check_interval=30
         )
+        
+        logger.info(f"📋 Creando cola RQ")
+        print(f"📋 Creando cola RQ", flush=True)
+        
         queue = Queue(connection=redis_conn)
+        
+        logger.info(f"➕ Encolando job en RQ")
+        print(f"➕ Encolando job en RQ", flush=True)
         
         job = queue.enqueue(
             run_pipeline_with_state,
-            session_id=session_id,
-            storage_state=storage_state,
-            job_id=job_id,
-            year=request.year,
-            month=request.month.value,
-            prestador=request.prestador,
-            client_id=request.client_id,
+            # Parámetros de la función (en orden)
+            session_id,
+            storage_state,
+            job_id,
+            str(request.year),  # Convertir a string
+            request.month.value,
+            request.prestador,
+            request.client_id,
+            # Parámetros de RQ
             job_timeout=f'{settings.job_timeout_minutes}m',
             result_ttl=86400,
             failure_ttl=86400
         )
         
         logger.info(f"✅ Job {job_id} encolado exitosamente (RQ job: {job.id})")
+        print(f"✅ Job {job_id} encolado (RQ: {job.id})", flush=True)
         
-        # 5. Cerrar sesión de navegador (ya no la necesitamos)
+        # 6. Cerrar sesión de navegador (ya no la necesitamos)
+        logger.info(f"🔒 Cerrando sesión {session_id}")
+        print(f"🔒 Cerrando sesión", flush=True)
+        
         await remote_orchestrator.close_session(session_id)
-        logger.info(f"🔒 Sesión {session_id} cerrada")
+        
+        logger.info(f"✅✅✅ Flujo completo exitoso para {session_id}")
+        print(f"✅✅✅ Flujo completo exitoso", flush=True)
         
     except Exception as e:
-        logger.error(f"❌ Error en background task para {session_id}: {e}")
+        logger.error(f"❌❌❌ ERROR en background task para {session_id}: {e}")
+        print(f"❌❌❌ ERROR en background task para {session_id}: {e}", flush=True)
+        traceback.print_exc()
         try:
             await remote_orchestrator.close_session(session_id)
         except:
@@ -310,10 +358,22 @@ async def run_remote_browser(
     # URL del viewer noVNC
     viewer_url = f"http://localhost:6080/vnc.html?resize=remote&autoconnect=true"
     
+    # Callback para capturar excepciones del task
+    def task_done_callback(task):
+        try:
+            task.result()  # Esto levantará la excepción si hubo una
+        except Exception as e:
+            logger.error(f"❌ Background task falló: {e}")
+            print(f"❌ Background task falló: {e}", flush=True)
+            import traceback
+            traceback.print_exc()
+    
     # Lanzar background task que inicia navegador, espera login y procesa
-    background_tasks.add_task(background_wait_and_process, session_id, request)
+    task = asyncio.create_task(background_wait_and_process(session_id, request))
+    task.add_done_callback(task_done_callback)  # Capturar excepciones
     
     logger.info(f"✅ Sesión {session_id} encolada, background task iniciado")
+    print(f"✅ Sesión {session_id} encolada, background task CREADO", flush=True)
     
     return RunResponse(
         session_id=session_id,

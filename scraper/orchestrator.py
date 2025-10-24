@@ -11,6 +11,7 @@ from playwright.async_api import async_playwright
 from scraper.models import ScrapingParams, ScrapingResult, ExtractionResult, ValidationReport
 from scraper.cruzblanca import CruzBlancaScraper
 from scraper.extractor import PDFExtractor
+from config.cruzblanca_selectors import DASHBOARD_URL
 
 
 class ProcessOrchestrator:
@@ -233,15 +234,18 @@ class ProcessOrchestrator:
             expected_count=scraping_result.successful
         )
         
+        # Obtener summary del resultado de extracción
+        summary = extracted_data.get("summary", {})
+        
         # Crear resultado
         result = ExtractionResult(
             job_id=scraping_result.job_id,
-            total_files=validation["total_files"],
-            extracted=validation["extracted"],
-            failed=validation["failed"],
-            success_rate=validation["success_rate"],
+            total_files=summary.get("total_files", 0),
+            extracted=summary.get("successful", 0),
+            failed=summary.get("failed", 0),
+            success_rate=validation["success_rate"] * 100,  # Convertir a porcentaje
             output_file=str(output_file),
-            failed_files=validation["failed_files"]
+            failed_files=summary.get("failed_files", [])
         )
         
         print(f"\n✅ Extracción completada:")
@@ -299,9 +303,9 @@ class ProcessOrchestrator:
             
             try:
                 # NO necesitamos hacer login - ya estamos autenticados!
-                # Ir directo al área privada
-                print("🔓 Navegando al área privada (ya autenticado)...")
-                await page.goto("https://www.cruzblanca.cl/wps/portal/Private/Privado/Home")
+                # Ir directo al área privada (EXTRANET)
+                print("🔓 Navegando a la extranet (ya autenticado)...")
+                await page.goto(DASHBOARD_URL)
                 
                 # Esperar un momento para asegurar que la sesión es válida
                 await page.wait_for_load_state("networkidle", timeout=10000)
@@ -313,7 +317,7 @@ class ProcessOrchestrator:
                 print("✅ Autenticación válida, iniciando scraping...")
                 
                 # Ejecutar scraping normal (sin login)
-                result = await scraper.discover_documents(
+                all_pdfs = await scraper.discover_documents(
                     page=page,
                     params={
                         'year': str(params.year),
@@ -324,23 +328,28 @@ class ProcessOrchestrator:
                 )
                 
                 print(f"\n✅ SCRAPING COMPLETADO")
-                print(f"   📄 PDFs descargados: {result['downloaded']}/{result['total']}")
+                print(f"   📄 PDFs descargados: {len(all_pdfs)}")
+                
+                # Cargar reporte de validación desde el archivo results.json
+                results_file = scraper.results_dir / f"{job_id}_results.json"
+                with open(results_file, 'r', encoding='utf-8') as f:
+                    results_data = json.load(f)
+                
+                validation_data = results_data.get("validation", {})
+                validation = ValidationReport(**validation_data)
                 
                 # Construir ScrapingResult
                 scraping_result = ScrapingResult(
                     job_id=job_id,
-                    total=result['total'],
-                    downloaded=result['downloaded'],
-                    failed=result['failed'],
-                    output_dir=result['pdf_dir'],
-                    metadata_file=result['metadata_file'],
-                    validation=ValidationReport(
-                        total_files=result['downloaded'],
-                        valid_files=result['downloaded'],
-                        corrupted_files=[],
-                        empty_files=[],
-                        success_rate=100.0 if result['downloaded'] > 0 else 0.0
-                    )
+                    year=str(params.year),
+                    month=params.month,
+                    prestador=params.prestador,
+                    total_pdfs=len(all_pdfs),
+                    successful=len(all_pdfs),
+                    failed=0,
+                    pdf_directory=str(scraper.pdf_dir / job_id),
+                    metadata_file=str(results_file),
+                    validation=validation
                 )
                 
                 return scraping_result

@@ -104,7 +104,9 @@ def run_pipeline(
             sftp.upload_directory(pdf_dir, remote_pdf_path, "*.pdf")
         )
         
-        print(f"✅ PDFs subidos: {upload_result['uploaded']}/{upload_result['total']}")
+        uploaded_count = upload_result.get('uploaded', upload_result.get('successful', 0))
+        total_count = upload_result.get('total', upload_result.get('total_files', 0))
+        print(f"✅ PDFs subidos: {uploaded_count}/{total_count}")
         
         result["steps"]["scraping"] = {
             "status": "completed",
@@ -145,7 +147,9 @@ def run_pipeline(
                 sftp.upload_directory(json_output_dir, remote_json_path, "*.json")
             )
             
-            print(f"✅ JSONs subidos: {upload_json_result['uploaded']}/{upload_json_result['total']}")
+            uploaded_count = upload_json_result.get('uploaded', upload_json_result.get('successful', 0))
+            total_count = upload_json_result.get('total', upload_json_result.get('total_files', 0))
+            print(f"✅ JSONs subidos: {uploaded_count}/{total_count}")
             
             result["steps"]["extraction"] = {
                 "status": "completed",
@@ -331,7 +335,9 @@ def run_pipeline_with_state(
             sftp.upload_directory(pdf_dir, remote_pdf_path, "*.pdf")
         )
         
-        print(f"✅ PDFs subidos: {upload_result['uploaded']}/{upload_result['total']}")
+        uploaded_count = upload_result.get('uploaded', upload_result.get('successful', 0))
+        total_count = upload_result.get('total', upload_result.get('total_files', 0))
+        print(f"✅ PDFs subidos: {uploaded_count}/{total_count}")
         
         result["steps"]["scraping"] = {
             "status": "completed",
@@ -356,7 +362,9 @@ def run_pipeline_with_state(
             sftp.upload_directory(json_dir, remote_json_path, "*.json")
         )
         
-        print(f"✅ JSONs subidos: {upload_json_result['uploaded']}/{upload_json_result['total']}")
+        uploaded_count = upload_json_result.get('uploaded', upload_json_result.get('successful', 0))
+        total_count = upload_json_result.get('total', upload_json_result.get('total_files', 0))
+        print(f"✅ JSONs subidos: {uploaded_count}/{total_count}")
         
         result["steps"]["extraction"] = {
             "status": "completed",

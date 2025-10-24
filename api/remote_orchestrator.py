@@ -63,7 +63,7 @@ class RemoteOrchestrator:
                     '--disable-setuid-sandbox',
                     '--disable-dev-shm-usage',
                     '--disable-gpu',
-                    '--window-size=1280,720'
+                    '--start-maximized'
                 ],
                 env={
                     'DISPLAY': self.viewer_display
@@ -72,7 +72,7 @@ class RemoteOrchestrator:
             
             context = await browser.new_context(
                 accept_downloads=True,
-                viewport={'width': 1280, 'height': 720}
+                no_viewport=True  # Sin viewport fijo, se adapta al tamaño de la ventana
             )
             
             page = await context.new_page()
@@ -80,6 +80,12 @@ class RemoteOrchestrator:
             # Navegar a Cruz Blanca Extranet (página de login)
             logger.info(f"🌐 Navegando a Cruz Blanca Extranet login...")
             await page.goto("https://extranet.cruzblanca.cl/login.aspx", timeout=30000)
+            
+            # SANITY CHECK: Verificar que Playwright controla la instancia visible
+            await page.evaluate("document.title = '🟢 CONTROL PLAYWRIGHT';")
+            current_title = await page.title()
+            logger.info(f"🔍 Playwright title set: {current_title}")
+            print(f"🔍 SANITY CHECK - Title: {current_title}", flush=True)
             
             # Guardar sesión activa
             session_data = {
@@ -105,15 +111,19 @@ class RemoteOrchestrator:
     async def wait_for_login(
         self,
         session_id: str,
-        timeout_seconds: int = 900  # 15 minutos
+        timeout_seconds: int = 600  # 10 minutos
     ) -> bool:
         """
-        Espera a que el usuario complete el login manualmente.
-        Detecta login exitoso cuando la URL cambia a /Privado/*.aspx
+        Espera login con polling robusto (URL + selector + cookies).
+        
+        Detecta login exitoso mediante:
+        1. URL contiene "Extranet.aspx"
+        2. Selector #menuPrincipal está presente
+        3. Cookies ASP.NET + URL correcta
         
         Args:
             session_id: ID de la sesión
-            timeout_seconds: Timeout en segundos (default: 15 min)
+            timeout_seconds: Timeout en segundos (default: 10 min)
             
         Returns:
             True si login exitoso, False si timeout
@@ -124,25 +134,68 @@ class RemoteOrchestrator:
         session = self.active_sessions[session_id]
         page: Page = session['page']
         
-        logger.info(f"⏳ Esperando login manual para sesión {session_id} (timeout: {timeout_seconds}s)")
+        import time
+        t0 = time.time()
+        last_url = ""
+        poll_interval = 2  # segundos
         
-        try:
-            # Esperar a que llegue al dashboard (Extranet.aspx = login exitoso)
-            await page.wait_for_url(
-                "**/Extranet.aspx*",
-                timeout=timeout_seconds * 1000
-            )
+        logger.info(f"⏳ Esperando login con polling cada {poll_interval}s (timeout: {timeout_seconds}s)")
+        print(f"⏳ Esperando login con polling cada {poll_interval}s", flush=True)
+        
+        iteration = 0
+        while time.time() - t0 < timeout_seconds:
+            iteration += 1
+            elapsed = int(time.time() - t0)
             
-            logger.info(f"✅ Login detectado para sesión {session_id}")
-            session['login_completed'] = True
-            return True
+            try:
+                current_url = page.url
+                
+                # Log cada 10 iteraciones para confirmar que el bucle está activo
+                if iteration % 10 == 0:
+                    logger.info(f"🔄 Polling activo - Iteración {iteration}, Elapsed: {elapsed}s")
+                    print(f"🔄 Polling #{iteration} ({elapsed}s)", flush=True)
+                
+                # Log cambio de URL
+                if current_url != last_url:
+                    logger.info(f"📍 URL actual: {current_url}")
+                    print(f"📍 URL: {current_url}", flush=True)
+                    last_url = current_url
+                
+                # 1) Detectar por URL
+                if "Extranet.aspx" in current_url:
+                    logger.info(f"✅ Login detectado por URL match")
+                    print(f"✅ Login detectado por URL match", flush=True)
+                    session['login_completed'] = True
+                    return True
+                
+                # 2) Detectar por selector (más robusto para páginas ASP.NET)
+                try:
+                    await page.wait_for_selector("#menuPrincipal", timeout=poll_interval * 1000)
+                    logger.info(f"✅ Login detectado por selector #menuPrincipal")
+                    print(f"✅ Login detectado por selector", flush=True)
+                    session['login_completed'] = True
+                    return True
+                except Exception:
+                    pass
+                
+                # 3) Detectar por cookie ASP.NET (señal débil pero útil)
+                cookies = await page.context.cookies()
+                session_cookies = [c for c in cookies if "sessionid" in c["name"].lower()]
+                if session_cookies and "Extranet.aspx" in current_url:
+                    logger.info(f"✅ Login detectado por cookies ASP.NET")
+                    print(f"✅ Login detectado por cookies", flush=True)
+                    session['login_completed'] = True
+                    return True
+                    
+            except Exception as e:
+                logger.error(f"⚠️ Error en polling: {e}")
+                print(f"⚠️ Error polling: {e}", flush=True)
             
-        except asyncio.TimeoutError:
-            logger.warning(f"⚠️ Timeout esperando login para sesión {session_id}")
-            return False
-        except Exception as e:
-            logger.error(f"❌ Error esperando login para {session_id}: {e}")
-            return False
+            await asyncio.sleep(poll_interval)
+        
+        logger.warning(f"⏰ Timeout esperando login para sesión {session_id}")
+        print(f"⏰ Timeout esperando login", flush=True)
+        return False
     
     async def capture_storage_state(self, session_id: str) -> Optional[Dict]:
         """

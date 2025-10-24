@@ -168,3 +168,108 @@ class PDFExtractor:
             return dt.strftime("%Y-%m-%d")
         except ValueError:
             return None
+    
+    # === MÉTODOS DE PROCESAMIENTO EN BATCH ===
+    
+    def extract_from_directory(self, dir_path: str, metadata_file: Optional[str] = None) -> Dict:
+        """
+        Extrae datos de todos los PDFs en un directorio.
+        
+        Args:
+            dir_path: Path al directorio con PDFs
+            metadata_file: Path opcional al archivo de metadata (no usado aún)
+            
+        Returns:
+            Dict con lista de documentos extraídos y metadata
+        """
+        from pathlib import Path
+        import json
+        
+        pdf_dir = Path(dir_path)
+        if not pdf_dir.exists():
+            raise ValueError(f"Directorio no existe: {dir_path}")
+        
+        # Buscar todos los PDFs
+        pdf_files = sorted(pdf_dir.glob("*.pdf"))
+        
+        print(f"   📄 Encontrados {len(pdf_files)} PDFs para extraer")
+        
+        extracted_documents = []
+        failed_files = []
+        
+        for i, pdf_file in enumerate(pdf_files, 1):
+            try:
+                print(f"   [{i}/{len(pdf_files)}] Extrayendo {pdf_file.name}...")
+                data = self.extract_from_file(str(pdf_file))
+                
+                # Agregar metadata del archivo
+                data["_metadata"] = {
+                    "filename": pdf_file.name,
+                    "file_path": str(pdf_file),
+                    "extraction_timestamp": datetime.now().isoformat()
+                }
+                
+                extracted_documents.append(data)
+                
+            except Exception as e:
+                print(f"   ⚠️  Error extrayendo {pdf_file.name}: {e}")
+                failed_files.append({
+                    "filename": pdf_file.name,
+                    "error": str(e)
+                })
+        
+        print(f"   ✅ Extracción completada: {len(extracted_documents)} exitosos, {len(failed_files)} fallidos")
+        
+        return {
+            "documents": extracted_documents,
+            "summary": {
+                "total_files": len(pdf_files),
+                "successful": len(extracted_documents),
+                "failed": len(failed_files),
+                "failed_files": failed_files
+            }
+        }
+    
+    def save_to_json(self, extracted_data: Dict, output_file: str) -> None:
+        """
+        Guarda datos extraídos a un archivo JSON.
+        
+        Args:
+            extracted_data: Dict con documentos extraídos
+            output_file: Path del archivo de salida
+        """
+        import json
+        from pathlib import Path
+        
+        output_path = Path(output_file)
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        
+        with open(output_path, 'w', encoding='utf-8') as f:
+            json.dump(extracted_data, f, ensure_ascii=False, indent=2)
+        
+        print(f"   💾 Datos guardados en: {output_file}")
+    
+    def validate_extraction(self, extracted_data: Dict, expected_count: int) -> Dict:
+        """
+        Valida que la extracción se haya completado correctamente.
+        
+        Args:
+            extracted_data: Dict con documentos extraídos
+            expected_count: Número esperado de documentos
+            
+        Returns:
+            Dict con resultado de validación
+        """
+        summary = extracted_data.get("summary", {})
+        successful = summary.get("successful", 0)
+        failed = summary.get("failed", 0)
+        
+        passed = (successful == expected_count) and (failed == 0)
+        
+        return {
+            "passed": passed,
+            "expected_count": expected_count,
+            "successful_count": successful,
+            "failed_count": failed,
+            "success_rate": successful / expected_count if expected_count > 0 else 0.0
+        }
