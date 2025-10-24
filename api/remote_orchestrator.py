@@ -21,54 +21,77 @@ logger = logging.getLogger(__name__)
 class RemoteOrchestrator:
     """Orquestador de sesiones de navegador remoto."""
     
-    def __init__(self, viewer_host: str = "viewer", viewer_display: str = ":99"):
+    def __init__(
+        self, 
+        viewer_host: str = "viewer", 
+        viewer_display: str = ":99",
+        use_cdp: bool = False
+    ):
         """
         Args:
             viewer_host: Hostname del contenedor viewer
             viewer_display: Display de X11 (ej: :99)
+            use_cdp: Si True, usa CDP para conectar a Chromium remoto
         """
         self.viewer_host = viewer_host
         self.viewer_display = viewer_display
+        self.use_cdp = use_cdp
         self.active_sessions: Dict[str, Dict] = {}
         
     async def start_remote_session(
         self,
-        session_id: str
+        session_id: str,
+        cdp_port: Optional[int] = 9222
     ) -> Dict:
         """
         Inicia una sesión de navegador remoto en el viewer container.
         
-        Fase 3: Conecta al display del viewer y lanza Chromium visible via noVNC.
-        El usuario hace login manualmente en el navegador remoto.
+        Soporta dos modos:
+        - Modo local (use_cdp=False): Lanza Chromium en display local compartido
+        - Modo CDP (use_cdp=True): Conecta a Chromium remoto via CDP
         
         Args:
             session_id: ID único de la sesión
+            cdp_port: Puerto CDP para conexión remota (default: 9222)
             
         Returns:
             Dict con metadata de la sesión
         """
-        logger.info(f"🚀 Iniciando sesión remota (Fase 3): {session_id}")
+        logger.info(f"🚀 Iniciando sesión remota: {session_id}")
+        logger.info(f"   Modo: {'CDP' if self.use_cdp else 'Local Display'}")
         
         try:
             playwright = await async_playwright().start()
             
-            # Conectar al display del viewer
-            # El viewer tiene DISPLAY=:99 con Xvfb corriendo
-            logger.info(f"📺 Conectando a display {self.viewer_display} en {self.viewer_host}")
+            if self.use_cdp:
+                # Modo CDP: Conectar a Chromium remoto ya corriendo
+                cdp_url = f"http://{self.viewer_host}:{cdp_port}"
+                logger.info(f"📡 Conectando via CDP a: {cdp_url}")
+                
+                try:
+                    browser = await playwright.chromium.connect_over_cdp(cdp_url)
+                    logger.info(f"✅ Conectado exitosamente via CDP")
+                except Exception as e:
+                    logger.error(f"❌ Error conectando via CDP: {e}")
+                    raise Exception(f"No se pudo conectar a Chromium via CDP en {cdp_url}. Asegúrate de que el viewer está corriendo.")
             
-            browser = await playwright.chromium.launch(
-                headless=False,
-                args=[
-                    '--no-sandbox',
-                    '--disable-setuid-sandbox',
-                    '--disable-dev-shm-usage',
-                    '--disable-gpu',
-                    '--start-maximized'
-                ],
-                env={
-                    'DISPLAY': self.viewer_display
-                }
-            )
+            else:
+                # Modo local: Lanzar Chromium en display compartido
+                logger.info(f"📺 Lanzando Chromium en display {self.viewer_display}")
+                
+                browser = await playwright.chromium.launch(
+                    headless=False,
+                    args=[
+                        '--no-sandbox',
+                        '--disable-setuid-sandbox',
+                        '--disable-dev-shm-usage',
+                        '--disable-gpu',
+                        '--start-maximized'
+                    ],
+                    env={
+                        'DISPLAY': self.viewer_display
+                    }
+                )
             
             context = await browser.new_context(
                 accept_downloads=True,
@@ -317,7 +340,7 @@ class RemoteOrchestrator:
             logger.info(f"🧹 Limpiadas {len(sessions_to_close)} sesiones expiradas")
 
 
-# Instancia global del orquestador
-# Se usa desde el endpoint /api/v2/run
-remote_orchestrator = RemoteOrchestrator()
+# Instancia global del orquestador (modo legacy - display compartido)
+# NOTA: Para modo multi-cliente con CDP, crear instancia con use_cdp=True en api/main.py
+remote_orchestrator = RemoteOrchestrator(use_cdp=False)
 

@@ -30,6 +30,13 @@ class Settings(BaseSettings):
     # Paths
     data_dir: str = "data"
     
+    # Docker Manager Configuration (Multi-Client Viewers)
+    docker_manager_url: str = "http://localhost:8001"
+    viewer_host: str = "localhost"  # Hostname/IP del servidor con viewers
+    
+    # Database
+    database_path: str = "data/scraper.db"
+    
     model_config = SettingsConfigDict(
         env_file=".env",
         env_file_encoding="utf-8",

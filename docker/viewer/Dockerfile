@@ -65,8 +65,11 @@ RUN pip3 install playwright --break-system-packages && \
 COPY start.sh /start.sh
 RUN chmod +x /start.sh
 
-# Expose noVNC port
+# Expose ports
+# noVNC web UI
 EXPOSE 6080
+# Chrome DevTools Protocol (CDP)
+EXPOSE 9222
 
 # Set display environment variable
 ENV DISPLAY=:99
